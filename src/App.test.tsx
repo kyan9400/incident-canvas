@@ -1,11 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { STORAGE_KEY } from './lib/storage'
 
 describe('Incident Canvas', () => {
-  beforeEach(() => localStorage.clear())
+  beforeEach(() => {
+    localStorage.clear()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+  })
 
   it('renders the sample report and calculated metrics', () => {
     render(<App />)
@@ -24,8 +27,9 @@ describe('Incident Canvas', () => {
     await user.type(newTitle, 'Customer update posted')
 
     const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}')
-    expect(stored.timeline).toHaveLength(6)
-    expect(stored.timeline[5].label).toBe('Customer update posted')
+    expect(stored.schemaVersion).toBe(2)
+    expect(stored.incidents[0].timeline).toHaveLength(6)
+    expect(stored.incidents[0].timeline[5].label).toBe('Customer update posted')
   })
 
   it('updates follow-up status and completion', async () => {
@@ -42,6 +46,17 @@ describe('Incident Canvas', () => {
     expect(screen.getByDisplayValue('Untitled incident')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: /example/i }))
     expect(screen.getByDisplayValue(/Checkout requests stalled/)).toBeInTheDocument()
+  })
+
+  it('duplicates and switches incidents from the archive', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: /archive 1/i }))
+    await user.click(screen.getByRole('button', { name: /duplicate active/i }))
+
+    expect(screen.getAllByText(/Copy of Checkout requests stalled/).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /archive 2/i })).toBeInTheDocument()
   })
 
   it('rejects invalid imports without replacing the report', () => {

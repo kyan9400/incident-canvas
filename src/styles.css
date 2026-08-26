@@ -357,6 +357,84 @@ footer p { margin: 0; }
 .notice.visible { opacity: 1; transform: translateY(0); }
 .notice svg { color: var(--acid); }
 
+.archive-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(18, 19, 17, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.archive-drawer {
+  width: min(560px, 94vw);
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  color: var(--ink);
+  background: #e7e3d7;
+  border-left: 1px solid var(--paper);
+  box-shadow: -20px 0 60px rgba(0, 0, 0, 0.28);
+  animation: drawer-in 220ms ease-out both;
+}
+
+.archive-drawer > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30px 28px;
+  border-bottom: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.archive-drawer > header span {
+  color: var(--acid);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.archive-drawer > header h2 {
+  margin: 5px 0 0;
+  font-family: 'Newsreader', serif;
+  font-size: 2.4rem;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+
+.archive-drawer > header .icon-button { color: var(--paper); border-color: #696a62; }
+.archive-search { position: relative; display: flex; align-items: center; padding: 18px 24px; border-bottom: 1px solid var(--ink); }
+.archive-search svg { position: absolute; left: 38px; color: var(--muted); }
+.archive-search input { width: 100%; min-height: 46px; padding: 10px 14px 10px 42px; border: 1px solid var(--line); background: var(--paper); }
+.archive-list { min-height: 0; overflow-y: auto; }
+.archive-list article { display: grid; grid-template-columns: 1fr 46px; align-items: center; border-bottom: 1px solid #aaa79d; background: #eeebe1; }
+.archive-list article.active { background: var(--acid); box-shadow: inset 5px 0 0 var(--coral); }
+.archive-select { min-width: 0; padding: 20px 24px; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.archive-select > span { display: flex; gap: 10px; align-items: center; margin-bottom: 9px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: 0.56rem; text-transform: uppercase; }
+.archive-select > span b { padding: 4px 6px; color: var(--paper); background: var(--coral-dark); font-size: 0.54rem; }
+.archive-select strong { display: block; font-family: 'Newsreader', serif; font-size: 1.18rem; line-height: 1.15; }
+.archive-select small { display: block; margin-top: 10px; overflow: hidden; color: var(--muted); font-family: 'IBM Plex Mono', monospace; font-size: 0.55rem; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
+.archive-empty { padding: 50px 24px; color: var(--muted); text-align: center; font-size: 0.76rem; }
+.archive-drawer > footer {
+  width: auto;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+  color: var(--paper);
+  background: var(--ink);
+}
+.archive-drawer > footer button { display: flex; gap: 7px; align-items: center; justify-content: center; min-height: 64px; padding: 10px; border: 0; border-right: 1px solid #62635b; color: inherit; background: transparent; font-size: 0.65rem; cursor: pointer; }
+.archive-drawer > footer button:last-child { border-right: 0; }
+.archive-drawer > footer button:hover { color: var(--ink); background: var(--acid); }
+
+@keyframes drawer-in {
+  from { transform: translateX(28px); opacity: 0; }
+}
+
 @media (max-width: 1050px) {
   .saved-indicator { display: none; }
   .top-actions button { font-size: 0; }
@@ -415,6 +493,8 @@ footer p { margin: 0; }
   .action-row select { width: 110px; }
   .action-row .icon-button { grid-column: 2; grid-row: 1 / 5; }
   footer { flex-direction: column; gap: 12px; align-items: start; width: calc(100% - 32px); }
+  .archive-drawer > footer { width: auto; display: grid; grid-template-columns: 1fr; }
+  .archive-drawer > footer button { width: 100%; min-height: 48px; border-right: 0; border-bottom: 1px solid #62635b; }
 }
 
 @media (max-width: 480px) {

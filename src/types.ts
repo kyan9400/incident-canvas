@@ -42,3 +42,9 @@ export interface IncidentMetrics {
   detectionMinutes: number | null
   completionPercent: number
 }
+
+export interface IncidentArchive {
+  schemaVersion: 2
+  activeIncidentId: string
+  incidents: Incident[]
+}

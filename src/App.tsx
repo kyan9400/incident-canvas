@@ -1,18 +1,22 @@
-import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type CSSProperties, type ReactNode } from 'react'
 import {
+  Archive,
   AlertTriangle,
   Check,
   Clipboard,
   Clock3,
   Code2,
+  Copy,
   Download,
   FileJson,
   Plus,
   Printer,
   RefreshCw,
+  Search,
   ShieldCheck,
   Trash2,
   Upload,
+  X,
 } from 'lucide-react'
 import { sampleIncident } from './data/sample'
 import {
@@ -24,8 +28,13 @@ import {
   parseIncident,
   toMarkdown,
 } from './lib/incident'
-import { loadIncident, saveIncident } from './lib/storage'
-import type { ActionItem, Incident, TimelineEvent } from './types'
+import {
+  loadArchive,
+  mergeArchives,
+  parseArchive,
+  saveArchive,
+} from './lib/storage'
+import type { ActionItem, Incident, IncidentArchive, TimelineEvent } from './types'
 
 function cloneSample(): Incident {
   return structuredClone(sampleIncident)
@@ -232,14 +241,24 @@ function ActionsEditor({ items, onChange }: ActionsEditorProps) {
 }
 
 export default function App() {
-  const [incident, setIncident] = useState<Incident>(() => loadIncident(cloneSample()))
+  const [archive, setArchive] = useState<IncidentArchive>(() => loadArchive(cloneSample()))
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const [archiveQuery, setArchiveQuery] = useState('')
   const [notice, setNotice] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
+  const incident = archive.incidents.find((entry) => entry.id === archive.activeIncidentId)
+    ?? archive.incidents[0]
   const metrics = calculateMetrics(incident)
+  const visibleIncidents = useMemo(() => {
+    const query = archiveQuery.trim().toLowerCase()
+    return [...archive.incidents]
+      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .filter((entry) => !query || `${entry.id} ${entry.title} ${entry.services.join(' ')}`.toLowerCase().includes(query))
+  }, [archive.incidents, archiveQuery])
 
   useEffect(() => {
-    saveIncident(incident)
-  }, [incident])
+    saveArchive(archive)
+  }, [archive])
 
   useEffect(() => {
     if (!notice) return
@@ -248,12 +267,78 @@ export default function App() {
   }, [notice])
 
   const updateIncident = (patch: Partial<Incident>) => {
-    setIncident((current) => ({ ...current, ...patch, updatedAt: new Date().toISOString() }))
+    setArchive((current) => {
+      const active = current.incidents.find((entry) => entry.id === current.activeIncidentId)
+        ?? current.incidents[0]!
+      const requestedId = patch.id ?? active.id
+      const nextId = current.incidents.some((entry) => entry.id !== active.id && entry.id === requestedId)
+        ? active.id
+        : requestedId
+      return {
+        ...current,
+        activeIncidentId: nextId,
+        incidents: current.incidents.map((entry) => entry.id === active.id
+          ? { ...entry, ...patch, id: nextId, updatedAt: new Date().toISOString() }
+          : entry),
+      }
+    })
   }
 
-  const replaceIncident = (next: Incident, message: string) => {
-    setIncident({ ...next, updatedAt: new Date().toISOString() })
+  const upsertIncident = (next: Incident, message: string) => {
+    const updated = { ...next, updatedAt: new Date().toISOString() }
+    setArchive((current) => {
+      const exists = current.incidents.some((entry) => entry.id === updated.id)
+      return {
+        ...current,
+        activeIncidentId: updated.id,
+        incidents: exists
+          ? current.incidents.map((entry) => entry.id === updated.id ? updated : entry)
+          : [...current.incidents, updated],
+      }
+    })
     setNotice(message)
+  }
+
+  const uniqueIncidentId = (base: string): string => {
+    const ids = new Set(archive.incidents.map((entry) => entry.id))
+    if (!ids.has(base)) return base
+    let suffix = 2
+    while (ids.has(`${base}-${suffix}`)) suffix += 1
+    return `${base}-${suffix}`
+  }
+
+  const createNewIncident = () => {
+    const next = blankIncident()
+    next.id = uniqueIncidentId(next.id)
+    upsertIncident(next, 'Blank report added to the archive')
+  }
+
+  const duplicateIncident = () => {
+    upsertIncident({
+      ...structuredClone(incident),
+      id: uniqueIncidentId(`${incident.id}-COPY`),
+      title: `Copy of ${incident.title}`,
+    }, 'Incident duplicated')
+  }
+
+  const deleteIncident = (id: string) => {
+    if (archive.incidents.length === 1) {
+      setNotice('The archive must keep at least one incident')
+      return
+    }
+    const target = archive.incidents.find((entry) => entry.id === id)
+    if (!target || !window.confirm(`Delete ${target.id} from this browser?`)) return
+    setArchive((current) => {
+      const incidents = current.incidents.filter((entry) => entry.id !== id)
+      return {
+        ...current,
+        incidents,
+        activeIncidentId: current.activeIncidentId === id
+          ? incidents[0].id
+          : current.activeIncidentId,
+      }
+    })
+    setNotice('Incident removed from the local archive')
   }
 
   const exportMarkdown = () => {
@@ -264,6 +349,11 @@ export default function App() {
   const exportJson = () => {
     downloadFile(`${incident.id.toLowerCase()}.json`, JSON.stringify(incident, null, 2), 'application/json')
     setNotice('Portable incident file exported')
+  }
+
+  const exportArchive = () => {
+    downloadFile('incident-canvas-archive.json', JSON.stringify(archive, null, 2), 'application/json')
+    setNotice('Portable archive exported')
   }
 
   const copyMarkdown = async () => {
@@ -280,8 +370,14 @@ export default function App() {
     event.target.value = ''
     if (!file) return
     try {
-      const next = parseIncident(JSON.parse(await file.text()))
-      replaceIncident(next, 'Incident file imported')
+      const value = JSON.parse(await file.text()) as { schemaVersion?: unknown }
+      if (value.schemaVersion === 2) {
+        const incoming = parseArchive(value)
+        setArchive((current) => mergeArchives(current, incoming))
+        setNotice(`${incoming.incidents.length} archived incident${incoming.incidents.length === 1 ? '' : 's'} imported`)
+      } else {
+        upsertIncident(parseIncident(value), 'Incident file imported')
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Could not import this file')
     }
@@ -300,6 +396,7 @@ export default function App() {
         </a>
         <nav className="top-actions" aria-label="Report actions">
           <span className="saved-indicator"><Check size={14} /> Stored on this device</span>
+          <button type="button" onClick={() => setArchiveOpen(true)}><Archive size={16} /> Archive {archive.incidents.length}</button>
           <button type="button" onClick={copyMarkdown}><Clipboard size={16} /> Copy report</button>
           <button type="button" onClick={() => fileInput.current?.click()}><Upload size={16} /> Import</button>
           <div className="export-group">
@@ -310,6 +407,45 @@ export default function App() {
           <input ref={fileInput} className="visually-hidden" type="file" accept="application/json,.json" onChange={importJson} />
         </nav>
       </header>
+
+      {archiveOpen && (
+        <div className="archive-backdrop" role="presentation" onMouseDown={(event) => {
+          if (event.currentTarget === event.target) setArchiveOpen(false)
+        }}>
+          <aside className="archive-drawer" aria-labelledby="archive-title">
+            <header>
+              <div><span>Local dossier library</span><h2 id="archive-title">Incident archive</h2></div>
+              <button className="icon-button" type="button" aria-label="Close archive" onClick={() => setArchiveOpen(false)}><X size={18} /></button>
+            </header>
+            <label className="archive-search">
+              <Search size={16} />
+              <span className="visually-hidden">Search incidents</span>
+              <input value={archiveQuery} placeholder="Search ID, title, or service" onChange={(event) => setArchiveQuery(event.target.value)} />
+            </label>
+            <div className="archive-list">
+              {visibleIncidents.map((entry) => (
+                <article className={entry.id === incident.id ? 'active' : ''} key={entry.id}>
+                  <button className="archive-select" type="button" onClick={() => {
+                    setArchive((current) => ({ ...current, activeIncidentId: entry.id }))
+                    setArchiveOpen(false)
+                  }}>
+                    <span><b>{entry.severity}</b>{entry.status}</span>
+                    <strong>{entry.title}</strong>
+                    <small>{entry.id} · {entry.services.join(', ') || 'No services'} · edited {formatTimestamp(entry.updatedAt)}</small>
+                  </button>
+                  <button className="icon-button quiet" type="button" aria-label={`Delete ${entry.id}`} onClick={() => deleteIncident(entry.id)}><Trash2 size={16} /></button>
+                </article>
+              ))}
+              {!visibleIncidents.length && <div className="archive-empty">No incidents match this search.</div>}
+            </div>
+            <footer>
+              <button type="button" onClick={createNewIncident}><Plus size={16} /> New incident</button>
+              <button type="button" onClick={duplicateIncident}><Copy size={16} /> Duplicate active</button>
+              <button type="button" onClick={exportArchive}><Download size={16} /> Export archive</button>
+            </footer>
+          </aside>
+        </div>
+      )}
 
       <main id="report">
         <section className="dossier-cover" id="top">
@@ -368,8 +504,8 @@ export default function App() {
             />
           </Field>
           <div className="reset-actions">
-            <button type="button" onClick={() => replaceIncident(blankIncident(), 'Blank report created')}><Plus size={16} /> New</button>
-            <button type="button" onClick={() => replaceIncident(cloneSample(), 'Example restored')}><RefreshCw size={16} /> Example</button>
+            <button type="button" onClick={createNewIncident}><Plus size={16} /> New</button>
+            <button type="button" onClick={() => upsertIncident(cloneSample(), 'Example added to the archive')}><RefreshCw size={16} /> Example</button>
           </div>
         </section>
 
